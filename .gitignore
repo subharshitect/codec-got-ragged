@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local environments
+.env
+.venv/
+venv/
+
+# Generated analysis outputs
+outputs/**
+!outputs/
+!outputs/**/
+!outputs/**/.gitkeep
+
+# Local input videos
+data/**/*.mp4
+data/**/*.mov
+data/**/*.mkv
+data/**/*.avi
+data/**/*.webm
+data/**/*.m4v
+
+# Local OS/editor files
+.DS_Store
+*.swp
