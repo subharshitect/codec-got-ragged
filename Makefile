@@ -1,10 +1,13 @@
 PYTHON ?= python3
 # VIDEO ?= /home/shubh/workspace/centroids-are-all-you-need/TimeLensBench/data/TimeLensBench/videos/activitynet/v_0fvL6IHKYF0.mp4
-VIDEO ?= /home/shubh/workspace/codec-got-ragged/data/traffic.mp4
+VIDEO ?= /home/shubh/workspace/codec-got-ragged/data/pov.mp4
 FPS ?= 0
 EMBED_MODEL ?= openai/clip-vit-base-patch32
-EMBED_BATCH ?= 32
+EMBED_BATCH ?= 1024
 DEVICE ?= auto
+# SVD_RANKS ?= 1,5,10,20,50
+SVD_RANKS ?= 100,50,25,5
+SVD_ERROR_EPSILONS ?= 0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10
 
 EXTRACTED_DIR := outputs/extracted
 ENCODED_DIR := outputs/encoded
@@ -16,11 +19,15 @@ EMBEDDING_FRAMES_DIR := outputs/embedding_frames
 EMBEDDING_FRAMES_PLOTS_DIR := outputs/embedding_frames/plots
 EMBEDDING_DELTA_DIR := outputs/embedding_delta
 EMBEDDING_DELTA_PLOTS_DIR := outputs/embedding_delta/plots
+EMBEDDING_SVD_DIR := outputs/embedding_svd
+EMBEDDING_SVD_PLOTS_DIR := outputs/embedding_svd/plots
+EMBEDDING_SVD_ERROR_DIR := outputs/embedding_svd_error
+EMBEDDING_SVD_ERROR_PLOTS_DIR := outputs/embedding_svd_error/plots
 OUTPUTS_DIR := outputs
 
-.PHONY: all extract delta pixel-delta embedding embedding-frames embedding-delta clean check-video check-embedding
+.PHONY: all extract delta pixel-delta embedding embedding-frames embedding-delta embedding-svd embedding-svd-error clean check-video check-embedding
 
-all: extract pixel-delta embedding embedding-frames embedding-delta
+all: extract embedding embedding-frames embedding-delta embedding-svd embedding-svd-error
 
 # /home/shubh/workspace/centroids-are-all-you-need/TimeLensBench/data/TimeLensBench/videos/activitynet/v_0fvL6IHKYF0.mp4
 extract: check-video
@@ -32,8 +39,6 @@ pixel-delta:
 	@mkdir -p $(PIXEL_DELTAS_DIR) $(PIXEL_PLOTS_DIR)
 	$(PYTHON) scripts/delta/pixel_delta.py --input "$(EXTRACTED_DIR)/frames.csv" --out "$(PIXEL_DELTAS_DIR)"
 	$(PYTHON) scripts/delta/pixel_plot.py --deltas "$(PIXEL_DELTAS_DIR)" --out "$(PIXEL_PLOTS_DIR)"
-
-delta: pixel-delta
 
 embedding: extract
 	@mkdir -p $(EMBEDDINGS_DIR)
@@ -56,7 +61,7 @@ embedding-frames: check-embedding
 		--second-label "cos sim: e(prev adj), e(current)" \
 		--title-prefix "Frame Embedding Similarities"
 
-# delta1 = e(I1) - e(I0), delta2 = e(B/P1) - e(B/P0), then cosine_sim[delta1, delta2]
+# delta = e(anchor frame) - e(current frame), then cosine_sim[e(anchor frame), delta]
 embedding-delta: check-embedding
 	@mkdir -p $(EMBEDDING_DELTA_DIR) $(EMBEDDING_DELTA_PLOTS_DIR)
 	$(PYTHON) scripts/embedding/embedding_delta.py --frames "$(EXTRACTED_DIR)/frames.csv" --embeddings "$(EMBEDDINGS_DIR)/frame_embeddings.npy" --index "$(EMBEDDINGS_DIR)/frame_embeddings.csv" --out "$(EMBEDDING_DELTA_DIR)"
@@ -73,11 +78,21 @@ embedding-delta: check-embedding
 		--second-label "cos sim: e(prev adj), delta" \
 		--title-prefix "Embedding Delta Similarities"
 
+embedding-svd: check-embedding
+	@mkdir -p $(EMBEDDING_SVD_DIR) $(EMBEDDING_SVD_PLOTS_DIR)
+	$(PYTHON) scripts/svd/embedding_svd.py --frames "$(EXTRACTED_DIR)/frames.csv" --embeddings "$(EMBEDDINGS_DIR)/frame_embeddings.npy" --index "$(EMBEDDINGS_DIR)/frame_embeddings.csv" --out "$(EMBEDDING_SVD_DIR)" --ranks "$(SVD_RANKS)"
+	$(PYTHON) scripts/svd/embedding_svd_plot.py --svd "$(EMBEDDING_SVD_DIR)" --out "$(EMBEDDING_SVD_PLOTS_DIR)"
+
+embedding-svd-error: check-embedding
+	@mkdir -p $(EMBEDDING_SVD_ERROR_DIR) $(EMBEDDING_SVD_ERROR_PLOTS_DIR)
+	$(PYTHON) scripts/svd/embedding_svd_error.py --frames "$(EXTRACTED_DIR)/frames.csv" --embeddings "$(EMBEDDINGS_DIR)/frame_embeddings.npy" --index "$(EMBEDDINGS_DIR)/frame_embeddings.csv" --out "$(EMBEDDING_SVD_ERROR_DIR)" --epsilons "$(SVD_ERROR_EPSILONS)"
+	$(PYTHON) scripts/svd/embedding_svd_error_plot.py --svd-error "$(EMBEDDING_SVD_ERROR_DIR)" --out "$(EMBEDDING_SVD_ERROR_PLOTS_DIR)"
+
 clean:
 	@mkdir -p $(OUTPUTS_DIR)
 	@find $(OUTPUTS_DIR) -type f -delete
 	@find $(OUTPUTS_DIR) -depth -mindepth 1 -type d -empty -delete
-	@mkdir -p $(EXTRACTED_DIR) $(ENCODED_DIR) $(EXTRACT_PLOTS_DIR) $(PIXEL_DELTAS_DIR) $(PIXEL_PLOTS_DIR) $(EMBEDDINGS_DIR) $(EMBEDDING_FRAMES_DIR) $(EMBEDDING_FRAMES_PLOTS_DIR) $(EMBEDDING_DELTA_DIR) $(EMBEDDING_DELTA_PLOTS_DIR)
+	@mkdir -p $(EXTRACTED_DIR) $(ENCODED_DIR) $(EXTRACT_PLOTS_DIR) $(PIXEL_DELTAS_DIR) $(PIXEL_PLOTS_DIR) $(EMBEDDINGS_DIR) $(EMBEDDING_FRAMES_DIR) $(EMBEDDING_FRAMES_PLOTS_DIR) $(EMBEDDING_DELTA_DIR) $(EMBEDDING_DELTA_PLOTS_DIR) $(EMBEDDING_SVD_DIR) $(EMBEDDING_SVD_PLOTS_DIR) $(EMBEDDING_SVD_ERROR_DIR) $(EMBEDDING_SVD_ERROR_PLOTS_DIR)
 
 check-video:
 	@test -n "$(VIDEO)" || (echo "Usage: make extract VIDEO=path/to/video.mp4"; exit 1)

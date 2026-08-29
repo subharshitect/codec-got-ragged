@@ -28,3 +28,14 @@ data/**/*.m4v
 # Local OS/editor files
 .DS_Store
 *.swp
+
+# Local assistant/tooling files
+.codex/
+.claude/
+.cursor/
+.continue/
+.aider*
+CLAUDE.md
+
+# Vault
+vault

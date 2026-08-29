@@ -14,11 +14,19 @@
 - embedding frame similarity code: `scripts/embedding/embedding_frames.py`
 - embedding delta code: `scripts/embedding/embedding_delta.py`
 - embedding plot code: `scripts/embedding/embedding_plot.py`
+- embedding SVD code: `scripts/svd/embedding_svd.py`
+- embedding SVD plot code: `scripts/svd/embedding_svd_plot.py`
+- embedding SVD error code: `scripts/svd/embedding_svd_error.py`
+- embedding SVD error plot code: `scripts/svd/embedding_svd_error_plot.py`
 - frame embeddings: `outputs/embeddings/`
 - embedding frame similarity outputs: `outputs/embedding_frames/`
 - embedding frame similarity plots: `outputs/embedding_frames/plots/`
 - embedding delta similarity outputs: `outputs/embedding_delta/`
 - embedding delta similarity plots: `outputs/embedding_delta/plots/`
+- embedding SVD outputs: `outputs/embedding_svd/`
+- embedding SVD plots: `outputs/embedding_svd/plots/`
+- embedding SVD error outputs: `outputs/embedding_svd_error/`
+- embedding SVD error plots: `outputs/embedding_svd_error/plots/`
 
 ## Frame Terms
 
@@ -248,3 +256,83 @@ Plots:
 - subplot 1: cosine similarity between previous I-frame embedding and its delta vector
 - subplot 2: cosine similarity between previous adjacent-frame embedding and its delta vector
 - subplot 3: frame-type/keyframe strip
+
+## Embedding SVD
+
+`make embedding-svd` uses existing frame embeddings and runs SVD compression experiments on inter-I-frame matrices. `#we_invented`
+
+Segment rule: use `B/P` frames between consecutive I-frames in the chosen order. `#we_invented`
+
+```text
+I0, B1, P2, B3, I4
+=> segment = B1, P2, B3
+```
+
+Variants: `#we_invented`
+
+```text
+embedding_frames
+X = [e(B1), e(P2), e(B3), ...]
+
+embedding_delta_previous_i
+X = [e(I0)-e(B1), e(I0)-e(P2), e(I0)-e(B3), ...]
+
+embedding_delta_adjacent
+X = [e(I0)-e(B1), e(B1)-e(P2), e(P2)-e(B3), ...]
+```
+
+Rank rule: `#we_invented`
+
+```text
+k <= min(N_i, d_model)
+```
+
+Compression ratio: `#we_invented`
+
+```text
+original_params = N_i * d_model
+svd_params = k * (N_i + d_model + 1)
+compression_ratio = original_params / svd_params
+```
+
+Relative reconstruction error: `#we_invented`
+
+```text
+relative_error = ||X - X_k||_F / ||X||_F
+```
+
+Outputs:
+
+- `segment_svd.csv`: one row per valid segment, variant, order, and rank.
+- `aggregate_svd.csv`: mean/median/weighted summaries grouped by order, variant, and rank.
+- `segment_matrices.csv`: row mapping from each SVD matrix row back to source frame and anchor.
+- `plots/svd_error_vs_compression.png`: error vs compression scatter plot with median aggregate trend.
+- `plots/decode/svd_error_vs_compression.png`: decode-order panels only.
+- `plots/display/svd_error_vs_compression.png`: display-order panels only.
+
+## Embedding SVD Error
+
+`make embedding-svd-error` uses the same inter-I-frame matrices as `make embedding-svd`, but selects the smallest rank for each target error epsilon. `#we_invented`
+
+Selection rule: `#we_invented`
+
+```text
+relative_error(k) = ||X - X_k||_F / ||X||_F
+selected_k = first k where relative_error(k) <= epsilon + tolerance
+```
+
+The tolerance is `1e-12`, only to avoid floating-point boundary misses. `#we_invented`
+
+Equivalent SVD shortcut: `sqrt(sum(S[k:]^2) / sum(S^2))`.
+
+`first k` means the smallest rank that satisfies the target error. `#we_invented`
+
+Outputs:
+
+- `segment_svd_error.csv`: one row per segment, variant, order, and epsilon.
+- `aggregate_svd_error.csv`: selected-k/error/compression summaries grouped by order, variant, and epsilon.
+- `embedding_svd_error_metadata.json`: settings and formulas.
+- `plots/svd_error_targets_compression.png`: x-axis compression ratio, y-axis achieved reconstruction error.
+- `plots/svd_error_targets_k.png`: x-axis target epsilon, y-axis selected rank.
+- `plots/decode/`: decode-order versions of the two plots.
+- `plots/display/`: display-order versions of the two plots.
