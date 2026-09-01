@@ -1,0 +1,71 @@
+Reasoning for:
+outputs/embedding_svd_error/plots/display/svd_error_targets_compression.png
+
+Why the outliers formed:
+
+The outliers are mostly not caused by unusually large segments.
+Most high-compression outlier rows still have normal segment size:
+n_frames = 149 and matrix_rank = 149.
+
+They formed because some segment matrices need a much smaller selected_k
+to satisfy the same target error epsilon.
+
+Compression ratio is:
+
+original_params / svd_params
+
+and svd_params depends directly on k:
+
+svd_params = k * (N + d_model + 1)
+
+So when selected_k is smaller, compression_ratio becomes much larger.
+
+What this means mathematically:
+
+For those outlier segments, the embedding matrix energy is concentrated in
+fewer singular directions. A low-rank reconstruction captures most of the
+matrix with fewer SVD components.
+
+Panel-wise reason:
+
+1. embedding_frames
+
+This has the strongest outliers.
+Some normal-sized segments reach epsilon = 0.10 with only k = 4.
+That is why their compression ratio goes very high.
+
+Reason: raw frame embeddings inside those segments are highly similar /
+low-rank in embedding space.
+
+2. embedding_delta_previous_i
+
+This has moderate outliers.
+The clearest repeated case is display_000102.
+It reaches target errors with much smaller k than typical segments.
+
+Reason: deltas from previous I-frame are unusually structured for that
+segment, so fewer SVD components explain most of the delta matrix.
+
+3. embedding_delta_adjacent
+
+This panel is tighter.
+Even its outliers still need fairly large k, around 89 to 91 for epsilon = 0.10.
+
+Reason: adjacent-frame delta matrices are less low-rank. The frame-to-frame
+changes are more varied, so compression is weaker and outliers are mild.
+
+Tiny-segment near-zero points:
+
+Some near-zero-error points come from very short segments, e.g. n_frames = 3.
+When k reaches the full possible rank of such a tiny matrix, reconstruction
+becomes almost exact.
+
+These are not meaningful high-compression outliers because their compression
+ratio is about 1.
+
+Faithful conclusion:
+
+The main outliers happen because selected_k is unusually small, not because
+the segments are larger. Smaller selected_k means fewer SVD parameters, which
+creates a larger compression ratio. This indicates those segments are more
+low-rank / redundant in the chosen embedding representation.

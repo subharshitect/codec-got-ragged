@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.plot_format import annotate_first_last_frame, apply_three_decimal_ticks
 from common.progress import tqdm
 
 
@@ -32,6 +33,13 @@ def number(value: object) -> float | None:
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def format_summary_value(value: object) -> object:
+    parsed = number(value)
+    if parsed is None:
+        return value
+    return f"{parsed:.3f}"
 
 
 def draw_frame_strip(ax, rows: list[dict[str, str]]) -> None:
@@ -61,6 +69,8 @@ def draw_frame_strip(ax, rows: list[dict[str, str]]) -> None:
     ax.set_xlabel("display_time_seconds")
     ax.set_ylim(-0.8, 0.8)
     ax.grid(True, axis="x", linewidth=0.4, alpha=0.25)
+    apply_three_decimal_ticks(ax, x_axis=True, y_axis=False)
+    annotate_first_last_frame(ax, rows, x_values, "display_order_index")
     ax.legend(loc="upper right", frameon=True)
 
 
@@ -73,8 +83,8 @@ def summary_text(summary: dict) -> str:
             f"frames: {summary.get('total_frames')}",
             f"I/P/B: {counts.get('I', 0)} / {counts.get('P', 0)} / {counts.get('B', 0)}",
             f"keyframes: {summary.get('total_keyframes')}",
-            f"avg I distance: {gap.get('frames')} frames, {gap.get('seconds')} sec",
-            f"fps: {video.get('analysis_video_fps')}",
+            f"avg I distance: {format_summary_value(gap.get('frames'))} frames, {format_summary_value(gap.get('seconds'))} sec",
+            f"fps: {format_summary_value(video.get('analysis_video_fps'))}",
             f"codec: {video.get('codec_name')} {video.get('profile')} level {video.get('level')}",
         ]
     )

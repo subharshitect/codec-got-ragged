@@ -139,9 +139,10 @@ Given epsilons: [0.01, 0.05, 0.10, 0.20]
 For each segment matrix X:
   compute SVD once: X = U S Vt
 
- # TODO:
- - Setup the "baseline" for the same plots: [Baseline: FAISS: PQ Quantization, RabitQ] [Requires: embeddings in numpy format] 
- - 
+ # Baseline:
+ - FAISS PQ and RaBitQ are implemented as a separate global embedding-quantization stage.
+ - They require embeddings in numpy format: outputs/embeddings/frame_embeddings.npy.
+ - Their outputs are under outputs/quantization/.
 
  # [NOTE]: binary search!
   For each epsilon:
@@ -177,8 +178,8 @@ example: S = [10, 5, 2, 1] (singular values)
 
 SVD orders them from largest to smallest: s1 > s2 > s3 > s4 ... 
 
-This is why low-rank approximation works. If the first few values are huge and the rest tiny, 
-most of the matrix can be represented using only those first few components.
+`This is why low-rank approximation works. If the first few values are huge and the rest tiny, `
+`most of the matrix can be represented using only those first few components.`
 like: S = [100, 40, 3, 0.5, 0.1]
 is highly promising for low-rank compression because almost all the energy is concentrated in the first two components.
 

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.plot_format import annotate_first_last_frame, apply_three_decimal_ticks
 from common.progress import tqdm
 
 
@@ -58,6 +59,7 @@ def draw_score_panel(ax, rows: list[dict[str, str]], x_values: list[float | None
 
     ax.set_ylabel(label)
     ax.grid(True, linewidth=0.4, alpha=0.35)
+    apply_three_decimal_ticks(ax, x_axis=False, y_axis=True)
 
 
 def draw_i_markers(ax, rows: list[dict[str, str]], x_values: list[float | None]) -> None:
@@ -90,6 +92,8 @@ def draw_frame_strip(ax, rows: list[dict[str, str]], x_values: list[float | None
     ax.set_xlabel("time_seconds")
     ax.set_ylim(-0.8, 0.8)
     ax.grid(True, axis="x", linewidth=0.4, alpha=0.25)
+    apply_three_decimal_ticks(ax, x_axis=True, y_axis=False)
+    annotate_first_last_frame(ax, rows, x_values, "order_index")
 
 
 def plot_order(

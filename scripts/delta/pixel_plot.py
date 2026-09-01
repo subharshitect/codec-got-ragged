@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.plot_format import annotate_first_last_frame, apply_three_decimal_ticks
 from common.progress import tqdm
 
 
@@ -63,6 +64,9 @@ def plot_order(input_path: Path, output_path: Path, title: str) -> None:
     axes[0].grid(True, linewidth=0.4, alpha=0.35)
     axes[1].grid(True, linewidth=0.4, alpha=0.35)
     axes[2].set_xlabel("time_seconds")
+    apply_three_decimal_ticks(axes[0], x_axis=False, y_axis=True)
+    apply_three_decimal_ticks(axes[1], x_axis=False, y_axis=True)
+    apply_three_decimal_ticks(axes[2], x_axis=True, y_axis=False)
 
     handles = []
     for pict_type, color in COLORS.items():
@@ -169,6 +173,7 @@ def draw_frame_strip(ax, rows, x_values) -> None:
     ax.set_ylabel("frames")
     ax.set_ylim(-0.8, 0.8)
     ax.grid(True, axis="x", linewidth=0.4, alpha=0.25)
+    annotate_first_last_frame(ax, rows, x_values, "order_index")
 
 
 def main() -> None:

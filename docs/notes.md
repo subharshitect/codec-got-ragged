@@ -18,6 +18,8 @@
 - embedding SVD plot code: `scripts/svd/embedding_svd_plot.py`
 - embedding SVD error code: `scripts/svd/embedding_svd_error.py`
 - embedding SVD error plot code: `scripts/svd/embedding_svd_error_plot.py`
+- embedding quantization code: `scripts/quantization/embedding_quantization.py`
+- embedding quantization plot code: `scripts/quantization/plot_quantization.py`
 - frame embeddings: `outputs/embeddings/`
 - embedding frame similarity outputs: `outputs/embedding_frames/`
 - embedding frame similarity plots: `outputs/embedding_frames/plots/`
@@ -27,6 +29,8 @@
 - embedding SVD plots: `outputs/embedding_svd/plots/`
 - embedding SVD error outputs: `outputs/embedding_svd_error/`
 - embedding SVD error plots: `outputs/embedding_svd_error/plots/`
+- embedding quantization outputs: `outputs/quantization/`
+- embedding quantization plots: `outputs/quantization/plots/`
 
 ## Frame Terms
 
@@ -336,3 +340,40 @@ Outputs:
 - `plots/svd_error_targets_k.png`: x-axis target epsilon, y-axis selected rank.
 - `plots/decode/`: decode-order versions of the two plots.
 - `plots/display/`: display-order versions of the two plots.
+
+## Embedding Quantization
+
+`make embedding-quantization` runs FAISS PQ and RaBitQ baselines on all frame embeddings. `#we_invented`
+
+Input:
+
+```text
+outputs/embeddings/frame_embeddings.npy
+```
+
+Methods: `#we_invented`
+
+- `PQ`: product quantization, sweeping `M` values.
+- `RaBitQ`: RaBitQ index, sweeping `qb` search values.
+
+Metrics: `#we_invented`
+
+```text
+reconstruction MSE = mean((x - reconstructed_x)^2)
+relative reconstruction error = ||x - reconstructed_x||_F / ||x||_F
+compression ratio = original embedding bytes / quantized code bytes
+recall@k = overlap with exact IndexFlatL2 neighbors
+```
+
+Scope note:
+
+- SVD compresses inter-I segment matrices: `[N_i, d_model]`.
+- PQ/RaBitQ compress global individual embedding vectors: `[num_frames, d_model]`.
+
+Outputs:
+
+- `pq_results.csv`
+- `rabitq_results.csv`
+- `quantization_results.csv`
+- `quantization_metadata.json`
+- `plots/quantization_comparison.png`

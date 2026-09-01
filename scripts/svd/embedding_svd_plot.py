@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.plot_format import apply_three_decimal_ticks
 from common.progress import tqdm
 
 
@@ -79,6 +80,7 @@ def draw_panel(
     ax.set_xlabel("compression ratio")
     ax.set_ylabel("relative reconstruction error")
     ax.grid(True, linewidth=0.4, alpha=0.35)
+    apply_three_decimal_ticks(ax)
     if ranks or aggregate_points:
         ax.legend(loc="best", fontsize=8, frameon=True)
     else:

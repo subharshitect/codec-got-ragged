@@ -11,6 +11,7 @@ Targets:
 - `make embedding-delta`: use existing frame embeddings, then compute/plot embedding-vector delta cosine similarities.
 - `make embedding-svd`: use existing frame embeddings, then run inter-I-frame SVD compression experiments.
 - `make embedding-svd-error`: use existing frame embeddings, then find the smallest SVD rank for each target error.
+- `make embedding-quantization`: use existing frame embeddings, then run PQ and RaBitQ quantization baselines.
 - `make all`: run extract, embedding, embedding-frames, embedding-delta, embedding-svd, and embedding-svd-error.
 - `make clean`: clean generated `outputs/` files.
 
@@ -24,6 +25,12 @@ Knobs:
 - `DEVICE=auto`
 - `SVD_RANKS=1,5,10,20,50`
 - `SVD_ERROR_EPSILONS=0.01,0.05,0.10,0.20`
+- `QUANT_PQ_M=16,32,64,128,256`
+- `QUANT_PQ_NBITS=8`
+- `QUANT_RABITQ_QB=1,2,3,4,5,6,7,8`
+- `QUANT_QUERY_COUNT=1000`
+- `QUANT_K=10`
+- `QUANT_SAVE_INDEXES=0`
 
 ## Stages
 
@@ -221,3 +228,39 @@ Outputs:
 - `outputs/embedding_svd_error/plots/svd_error_targets_k.png`
 - `outputs/embedding_svd_error/plots/decode/`
 - `outputs/embedding_svd_error/plots/display/`
+
+### Embedding Quantization
+
+Uses existing frame embeddings from `make embedding`.
+
+This stage runs global FAISS quantization baselines on:
+
+```text
+outputs/embeddings/frame_embeddings.npy
+```
+
+Methods:
+
+```text
+PQ: sweep M values
+RaBitQ: sweep qb search values
+```
+
+Metrics:
+
+```text
+reconstruction MSE = mean((x - reconstructed_x)^2)
+relative reconstruction error = ||x - reconstructed_x||_F / ||x||_F
+compression ratio = original embedding bytes / quantized code bytes
+recall@k = overlap with exact IndexFlatL2 neighbors
+```
+
+This is a global vector-quantization baseline. SVD compresses inter-I segment matrices; PQ/RaBitQ compress individual embedding vectors.
+
+Outputs:
+
+- `outputs/quantization/pq_results.csv`
+- `outputs/quantization/rabitq_results.csv`
+- `outputs/quantization/quantization_results.csv`
+- `outputs/quantization/quantization_metadata.json`
+- `outputs/quantization/plots/quantization_comparison.png`

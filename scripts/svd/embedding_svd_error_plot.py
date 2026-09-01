@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.plot_format import apply_three_decimal_ticks
 from common.progress import tqdm
 
 
@@ -74,7 +75,7 @@ def draw_compression_panel(
         ys = [number(row["achieved_error"]) for row in epsilon_rows]
         sizes = [marker_size(number(row["selected_k"])) for row in epsilon_rows]
         color = cmap(color_index / max(1, len(epsilons) - 1))
-        ax.scatter(xs, ys, s=sizes, alpha=0.65, color=color, label=f"eps={epsilon:g}")
+        ax.scatter(xs, ys, s=sizes, alpha=0.65, color=color, label=f"eps={epsilon:.3f}")
 
     aggregate_points = [
         row
@@ -92,6 +93,7 @@ def draw_compression_panel(
     ax.set_xlabel("compression ratio")
     ax.set_ylabel("achieved reconstruction error")
     ax.grid(True, linewidth=0.4, alpha=0.35)
+    apply_three_decimal_ticks(ax)
     if epsilons or aggregate_points:
         ax.legend(loc="best", fontsize=8, frameon=True)
     else:
@@ -131,6 +133,7 @@ def draw_rank_panel(
     ax.set_xlabel("target error epsilon")
     ax.set_ylabel("selected k")
     ax.grid(True, linewidth=0.4, alpha=0.35)
+    apply_three_decimal_ticks(ax)
     if rows or aggregate_points:
         ax.legend(loc="best", fontsize=8, frameon=True)
     else:
@@ -161,6 +164,17 @@ def plot_grid(
                 else:
                     draw_rank_panel(ax, segment_rows, aggregate_rows, order_name, variant)
                 progress.update(1)
+
+    if panel_kind == "compression":
+        values = [
+            number(row.get("compression_ratio"))
+            for row in segment_rows
+            if row.get("order") in orders and row.get("status", "met") == "met"
+        ]
+        max_ratio = max((value for value in values if value is not None), default=None)
+        if max_ratio is not None:
+            for ax in axes.flat:
+                ax.set_xlim(left=0, right=max_ratio * 1.05)
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
