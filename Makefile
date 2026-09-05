@@ -1,25 +1,4 @@
-PYTHON ?= python3
-# VIDEO ?= /home/shubh/workspace/centroids-are-all-you-need/TimeLensBench/data/TimeLensBench/videos/activitynet/v_0fvL6IHKYF0.mp4
-# VIDEO ?= /home/shubh/workspace/codec-got-ragged/data/orange_juice_10mins.mp4
-VIDEO ?= /home/shubh/workspace/codec-got-ragged/data/traffic_10m.mp4
-FPS ?= 0
-EMBED_MODEL ?= openai/clip-vit-base-patch32
-EMBED_BATCH ?= 1024
-DEVICE ?= auto
-# SVD_RANKS ?= 1,5,10,20,50
-SVD_RANKS ?= 100,50,25,5
-SVD_ERROR_EPSILONS ?= 0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.10
-
-# Quant params
-# How many sub-vectors PQ splits the d_model into.
-QUANT_PQ_M ?= 16,32,64,128,256
-# Number of bits per PQ sub-vector.
-QUANT_PQ_NBITS ?= 8
-# RaBitQ query-time qb values to test.
-QUANT_RABITQ_QB ?= 1,2,3,4,5,6,7,8
-QUANT_QUERY_COUNT ?= 1000
-QUANT_K ?= 10
-QUANT_SAVE_INDEXES ?= 0
+-include config.mk
 
 EXTRACTED_DIR := outputs/extracted
 ENCODED_DIR := outputs/encoded
@@ -37,11 +16,13 @@ EMBEDDING_SVD_ERROR_DIR := outputs/embedding_svd_error
 EMBEDDING_SVD_ERROR_PLOTS_DIR := outputs/embedding_svd_error/plots
 QUANTIZATION_DIR := outputs/quantization
 QUANTIZATION_PLOTS_DIR := outputs/quantization/plots
+RETRIEVAL_DIR := outputs/retrieval
+RETRIEVAL_PLOTS_DIR := outputs/retrieval/plots
 OUTPUTS_DIR := outputs
 
-.PHONY: all extract delta pixel-delta embedding embedding-frames embedding-delta embedding-svd embedding-svd-error embedding-quantization quantization clean check-video check-embedding
+.PHONY: all extract delta pixel-delta embedding embedding-frames embedding-delta embedding-svd embedding-svd-error embedding-quantization quantization retrieval clean check-video check-embedding check-svd-error
 
-all: extract embedding embedding-frames embedding-delta embedding-svd embedding-svd-error
+all: extract embedding embedding-frames embedding-delta embedding-svd embedding-svd-error retrieval
 
 # /home/shubh/workspace/centroids-are-all-you-need/TimeLensBench/data/TimeLensBench/videos/activitynet/v_0fvL6IHKYF0.mp4
 extract: check-video
@@ -109,11 +90,16 @@ embedding-quantization: check-embedding
 
 quantization: embedding-quantization
 
+retrieval: check-embedding check-svd-error
+	@mkdir -p $(RETRIEVAL_DIR) $(RETRIEVAL_PLOTS_DIR)
+	$(PYTHON) scripts/retrieval/embedding_retrieval.py --frames "$(EXTRACTED_DIR)/frames.csv" --embeddings "$(EMBEDDINGS_DIR)/frame_embeddings.npy" --index "$(EMBEDDINGS_DIR)/frame_embeddings.csv" --svd-error "$(EMBEDDING_SVD_ERROR_DIR)/segment_svd_error.csv" --out "$(RETRIEVAL_DIR)" --query-count "$(QUERY_COUNT)" --k-neighbors "$(QUERY_K)" --seed "$(QUERY_SEED)" --pq-m "$(QUANT_PQ_M)" --pq-nbits "$(QUANT_PQ_NBITS)" --rabitq-qb "$(QUANT_RABITQ_QB)" --save-indexes "$(QUANT_SAVE_INDEXES)"
+	$(PYTHON) scripts/retrieval/plot_retrieval.py --retrieval "$(RETRIEVAL_DIR)" --out "$(RETRIEVAL_PLOTS_DIR)"
+
 clean:
 	@mkdir -p $(OUTPUTS_DIR)
 	@find $(OUTPUTS_DIR) -type f -delete
 	@find $(OUTPUTS_DIR) -depth -mindepth 1 -type d -empty -delete
-	@mkdir -p $(EXTRACTED_DIR) $(ENCODED_DIR) $(EXTRACT_PLOTS_DIR) $(PIXEL_DELTAS_DIR) $(PIXEL_PLOTS_DIR) $(EMBEDDINGS_DIR) $(EMBEDDING_FRAMES_DIR) $(EMBEDDING_FRAMES_PLOTS_DIR) $(EMBEDDING_DELTA_DIR) $(EMBEDDING_DELTA_PLOTS_DIR) $(EMBEDDING_SVD_DIR) $(EMBEDDING_SVD_PLOTS_DIR) $(EMBEDDING_SVD_ERROR_DIR) $(EMBEDDING_SVD_ERROR_PLOTS_DIR) $(QUANTIZATION_DIR) $(QUANTIZATION_PLOTS_DIR)
+	@mkdir -p $(EXTRACTED_DIR) $(ENCODED_DIR) $(EXTRACT_PLOTS_DIR) $(PIXEL_DELTAS_DIR) $(PIXEL_PLOTS_DIR) $(EMBEDDINGS_DIR) $(EMBEDDING_FRAMES_DIR) $(EMBEDDING_FRAMES_PLOTS_DIR) $(EMBEDDING_DELTA_DIR) $(EMBEDDING_DELTA_PLOTS_DIR) $(EMBEDDING_SVD_DIR) $(EMBEDDING_SVD_PLOTS_DIR) $(EMBEDDING_SVD_ERROR_DIR) $(EMBEDDING_SVD_ERROR_PLOTS_DIR) $(QUANTIZATION_DIR) $(QUANTIZATION_PLOTS_DIR) $(RETRIEVAL_DIR) $(RETRIEVAL_PLOTS_DIR)
 
 check-video:
 	@test -n "$(VIDEO)" || (echo "Usage: make extract VIDEO=path/to/video.mp4"; exit 1)
@@ -122,3 +108,6 @@ check-embedding:
 	@test -f "$(EXTRACTED_DIR)/frames.csv" || (echo "Missing $(EXTRACTED_DIR)/frames.csv. Run: make embedding"; exit 1)
 	@test -f "$(EMBEDDINGS_DIR)/frame_embeddings.npy" || (echo "Missing $(EMBEDDINGS_DIR)/frame_embeddings.npy. Run: make embedding"; exit 1)
 	@test -f "$(EMBEDDINGS_DIR)/frame_embeddings.csv" || (echo "Missing $(EMBEDDINGS_DIR)/frame_embeddings.csv. Run: make embedding"; exit 1)
+
+check-svd-error:
+	@test -f "$(EMBEDDING_SVD_ERROR_DIR)/segment_svd_error.csv" || (echo "Missing $(EMBEDDING_SVD_ERROR_DIR)/segment_svd_error.csv. Run: make embedding-svd-error"; exit 1)

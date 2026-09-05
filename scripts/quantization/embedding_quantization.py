@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 from pathlib import Path
@@ -13,6 +12,7 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.progress import tqdm
+from common.tabular import format_float, write_csv
 
 
 FIELDS = [
@@ -52,13 +52,6 @@ def parse_ints(value: str) -> list[int]:
 
 def parse_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y"}
-
-
-def format_float(value: float | None) -> str:
-    if value is None or not np.isfinite(value):
-        return ""
-    return f"{value:.8f}"
-
 
 def recall_at_k(exact_indices: np.ndarray, approx_indices: np.ndarray, k: int) -> float:
     if len(exact_indices) == 0 or k == 0:
@@ -228,14 +221,6 @@ def run_rabitq(
     return rows
 
 
-def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in FIELDS})
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--embeddings", default="outputs/embeddings/frame_embeddings.npy")
@@ -276,9 +261,9 @@ def main() -> None:
     rabitq_rows = run_rabitq(x, args.rabitq_qb, exact_indices, query_count, k_neighbors, out_dir, args.save_indexes)
     all_rows = pq_rows + rabitq_rows
 
-    write_csv(out_dir / "pq_results.csv", pq_rows)
-    write_csv(out_dir / "rabitq_results.csv", rabitq_rows)
-    write_csv(out_dir / "quantization_results.csv", all_rows)
+    write_csv(out_dir / "pq_results.csv", pq_rows, FIELDS)
+    write_csv(out_dir / "rabitq_results.csv", rabitq_rows, FIELDS)
+    write_csv(out_dir / "quantization_results.csv", all_rows, FIELDS)
 
     metadata = {
         "input_embeddings": str(embeddings_path),

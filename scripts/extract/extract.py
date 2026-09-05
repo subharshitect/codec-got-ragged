@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import math
 import shutil
@@ -16,6 +15,7 @@ from fractions import Fraction
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.progress import tqdm
+from common.tabular import number, write_csv
 
 
 FRAME_FIELDS = [
@@ -103,16 +103,6 @@ def read_stream(video: Path) -> dict:
     )
     return (data.get("streams") or [{}])[0]
 
-
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def int_text(value: object) -> str:
     parsed = number(value)
     if parsed is None:
@@ -197,6 +187,7 @@ def extract_frame_images(video: Path, frames_dir: Path) -> int:
 
 
 def sort_index(rows: list[dict[str, str]], keys: list[str]) -> dict[str, int]:
+    """Assign dense order indices after sorting by timestamp/order keys, then source_index."""
     def sort_key(row: dict[str, str]) -> tuple:
         values = []
         for key in keys:
@@ -276,15 +267,6 @@ def motion_stats(rows: list[dict[str, str]]) -> dict[str, str]:
         "mv_zero_ratio": f"{zero_count / count:.6f}" if count else "",
     }
 
-
-def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in fields})
-
-
 def packet_stats_by_frame_type(frames: list[dict[str, str]]) -> dict[str, dict[str, float | int | None]]:
     output = {}
     for pict_type in ["I", "P", "B"]:
@@ -302,6 +284,7 @@ def packet_stats_by_frame_type(frames: list[dict[str, str]]) -> dict[str, dict[s
 
 
 def mean_gap(values: list[float]) -> float | None:
+    """Return the mean consecutive gap, used for I-frame spacing summaries."""
     if len(values) < 2:
         return None
     gaps = [right - left for left, right in zip(values, values[1:])]

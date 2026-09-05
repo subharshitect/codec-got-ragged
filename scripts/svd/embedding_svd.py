@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import math
 import statistics
 import sys
 from collections import defaultdict
@@ -15,7 +13,15 @@ from pathlib import Path
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.embedding_data import load_embedding_inputs
 from common.progress import tqdm
+from common.svd_helpers import (
+    build_matrices,
+    compression_params,
+    inter_i_segments,
+    relative_error_at_rank,
+)
+from common.tabular import format_float, number, write_csv
 
 
 SEGMENT_FIELDS = [
@@ -68,43 +74,6 @@ MATRIX_ROW_FIELDS = [
 ]
 
 
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
-
-def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in fields})
-
-
-def ordered_rows(rows: list[dict[str, str]], order_column: str) -> list[dict[str, str]]:
-    return sorted(
-        rows,
-        key=lambda row: (
-            number(row.get(order_column)) is None,
-            number(row.get(order_column)) if number(row.get(order_column)) is not None else math.inf,
-            number(row.get("source_index")) or 0,
-        ),
-    )
-
-
-def load_embedding_index(index_path: Path) -> dict[str, int]:
-    return {row["frame_id"]: int(row["embedding_index"]) for row in read_csv(index_path)}
-
-
 def parse_ranks(value: str) -> list[int]:
     ranks = []
     for part in value.split(","):
@@ -118,140 +87,6 @@ def parse_ranks(value: str) -> list[int]:
     if not ranks:
         raise argparse.ArgumentTypeError("At least one rank is required.")
     return sorted(set(ranks))
-
-
-def format_float(value: float | None) -> str:
-    if value is None or not math.isfinite(value):
-        return ""
-    return f"{value:.8f}"
-
-
-def frame_embedding(row: dict[str, str], embeddings: np.ndarray, embedding_index: dict[str, int]) -> np.ndarray:
-    return embeddings[embedding_index[row["frame_id"]]]
-
-
-def inter_i_segments(rows: list[dict[str, str]], order_name: str, order_column: str) -> list[dict[str, object]]:
-    ordered = ordered_rows(rows, order_column)
-    i_positions = [index for index, row in enumerate(ordered) if row.get("pict_type") == "I"]
-    segments = []
-
-    for segment_number, (start_pos, end_pos) in enumerate(zip(i_positions, i_positions[1:])):
-        start_i = ordered[start_pos]
-        end_i = ordered[end_pos]
-        intermediate_rows = [
-            row
-            for row in ordered[start_pos + 1 : end_pos]
-            if row.get("pict_type") in {"P", "B"}
-        ]
-        if not intermediate_rows:
-            continue
-
-        segment_id = f"{order_name}_{segment_number:06d}"
-        segments.append(
-            {
-                "segment_id": segment_id,
-                "start_i": start_i,
-                "end_i": end_i,
-                "rows": intermediate_rows,
-                "ordered_rows": ordered,
-            }
-        )
-
-    return segments
-
-
-def previous_frame_map(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
-    output = {}
-    previous = None
-    for row in rows:
-        if previous is not None:
-            output[row["frame_id"]] = previous
-        previous = row
-    return output
-
-
-def append_matrix_rows(
-    matrix_rows: list[dict[str, str]],
-    order_name: str,
-    segment_id: str,
-    variant: str,
-    rows: list[dict[str, str]],
-    start_i: dict[str, str],
-    end_i: dict[str, str],
-    anchors: list[dict[str, str] | None],
-) -> None:
-    for row_index, (row, anchor) in enumerate(zip(rows, anchors)):
-        matrix_rows.append(
-            {
-                "order": order_name,
-                "segment_id": segment_id,
-                "variant": variant,
-                "matrix_row_index": str(row_index),
-                "frame_id": row.get("frame_id", ""),
-                "source_index": row.get("source_index", ""),
-                "pict_type": row.get("pict_type", ""),
-                "key_frame": row.get("key_frame", ""),
-                "start_i_frame_id": start_i.get("frame_id", ""),
-                "start_i_source_index": start_i.get("source_index", ""),
-                "end_i_frame_id": end_i.get("frame_id", ""),
-                "end_i_source_index": end_i.get("source_index", ""),
-                "anchor_frame_id": anchor.get("frame_id", "") if anchor else "",
-                "anchor_source_index": anchor.get("source_index", "") if anchor else "",
-            }
-        )
-
-
-def build_matrices(
-    order_name: str,
-    segment: dict[str, object],
-    embeddings: np.ndarray,
-    embedding_index: dict[str, int],
-    matrix_rows: list[dict[str, str]],
-) -> list[tuple[str, np.ndarray]]:
-    segment_id = str(segment["segment_id"])
-    start_i = segment["start_i"]
-    end_i = segment["end_i"]
-    rows = segment["rows"]
-    ordered = segment["ordered_rows"]
-
-    assert isinstance(start_i, dict)
-    assert isinstance(end_i, dict)
-    assert isinstance(rows, list)
-    assert isinstance(ordered, list)
-
-    previous_by_frame = previous_frame_map(ordered)
-    start_embedding = frame_embedding(start_i, embeddings, embedding_index)
-
-    variants = []
-
-    frame_matrix = np.stack(
-        [frame_embedding(row, embeddings, embedding_index) for row in rows],
-        axis=0,
-    ).astype(np.float32)
-    append_matrix_rows(matrix_rows, order_name, segment_id, "embedding_frames", rows, start_i, end_i, [None] * len(rows))
-    variants.append(("embedding_frames", frame_matrix))
-
-    previous_i_matrix = np.stack(
-        [start_embedding - frame_embedding(row, embeddings, embedding_index) for row in rows],
-        axis=0,
-    ).astype(np.float32)
-    append_matrix_rows(matrix_rows, order_name, segment_id, "embedding_delta_previous_i", rows, start_i, end_i, [start_i] * len(rows))
-    variants.append(("embedding_delta_previous_i", previous_i_matrix))
-
-    adjacent_anchors = [previous_by_frame.get(row["frame_id"]) for row in rows]
-    if all(anchor is not None for anchor in adjacent_anchors):
-        adjacent_matrix = np.stack(
-            [
-                frame_embedding(anchor, embeddings, embedding_index) - frame_embedding(row, embeddings, embedding_index)
-                for row, anchor in zip(rows, adjacent_anchors)
-                if anchor is not None
-            ],
-            axis=0,
-        ).astype(np.float32)
-        append_matrix_rows(matrix_rows, order_name, segment_id, "embedding_delta_adjacent", rows, start_i, end_i, adjacent_anchors)
-        variants.append(("embedding_delta_adjacent", adjacent_matrix))
-
-    return variants
 
 
 def svd_rows_for_matrix(
@@ -275,19 +110,13 @@ def svd_rows_for_matrix(
     u_matrix, singular_values, vt_matrix = np.linalg.svd(matrix, full_matrices=False)
     frobenius_norm = float(np.linalg.norm(matrix, ord="fro"))
     matrix_rank = int(np.linalg.matrix_rank(matrix))
-    original_params = n_frames * d_model
-
     output = []
     for rank in valid_ranks:
-        svd_params = rank * (n_frames + d_model + 1)
-        compression_ratio = original_params / svd_params if svd_params else None
+        original_params, svd_params, compression_ratio = compression_params(n_frames, d_model, rank)
         if frobenius_norm == 0:
             relative_error = None
         else:
-            reconstructed = (u_matrix[:, :rank] * singular_values[:rank]) @ vt_matrix[:rank, :]
-            relative_error = float(np.linalg.norm(matrix - reconstructed, ord="fro") / frobenius_norm)
-            # Equivalent SVD shortcut:
-            # sqrt(sum(S[k:]^2) / sum(S^2))
+            relative_error = relative_error_at_rank(matrix, u_matrix, singular_values, vt_matrix, rank, frobenius_norm)
 
         output.append(
             {
@@ -364,23 +193,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not frames_path.exists():
-        raise SystemExit(f"Missing frames file: {frames_path}")
-    if not embeddings_path.exists():
-        raise SystemExit(f"Missing embeddings file: {embeddings_path}")
-    if not index_path.exists():
-        raise SystemExit(f"Missing embedding index file: {index_path}")
-
-    frames = read_csv(frames_path)
-    embedding_index = load_embedding_index(index_path)
-    embeddings = np.load(embeddings_path)
-
-    if embeddings.ndim != 2:
-        raise SystemExit(f"Expected a 2D embedding array, got shape {embeddings.shape}")
-
-    missing = [row["frame_id"] for row in frames if row["frame_id"] not in embedding_index]
-    if missing:
-        raise SystemExit(f"Missing embedding for frame: {missing[0]}")
+    frames, embeddings, embedding_index = load_embedding_inputs(frames_path, embeddings_path, index_path)
 
     segment_rows = []
     matrix_rows = []

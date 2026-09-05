@@ -12,10 +12,11 @@ Targets:
 - `make embedding-svd`: use existing frame embeddings, then run inter-I-frame SVD compression experiments.
 - `make embedding-svd-error`: use existing frame embeddings, then find the smallest SVD rank for each target error.
 - `make embedding-quantization`: use existing frame embeddings, then run PQ and RaBitQ quantization baselines.
+- `make retrieval`: use existing frame embeddings and SVD error outputs, then evaluate retrieval recall for SVD, PQ, and RaBitQ.
 - `make all`: run extract, embedding, embedding-frames, embedding-delta, embedding-svd, and embedding-svd-error.
 - `make clean`: clean generated `outputs/` files.
 
-Knobs:
+Knobs live in `config.mk` and can still be overridden on the command line.
 
 - `VIDEO=path/to/video.mp4`
 - `FPS=0`: analyze original encoded video.
@@ -28,9 +29,12 @@ Knobs:
 - `QUANT_PQ_M=16,32,64,128,256`
 - `QUANT_PQ_NBITS=8`
 - `QUANT_RABITQ_QB=1,2,3,4,5,6,7,8`
-- `QUANT_QUERY_COUNT=1000`
-- `QUANT_K=10`
+- `QUANT_QUERY_COUNT=1000`: defaults to `QUERY_COUNT`.
+- `QUANT_K=10`: defaults to `QUERY_K`.
 - `QUANT_SAVE_INDEXES=0`
+- `QUERY_COUNT=1000`
+- `QUERY_K=10`
+- `QUERY_SEED=42`
 
 ## Stages
 
@@ -208,8 +212,10 @@ For each segment matrix and epsilon:
 
 ```text
 relative_error(k) = ||X - X_k||_F / ||X||_F
-selected_k = first k where relative_error(k) <= epsilon + tolerance
+selected_k = smallest k where relative_error(k) <= epsilon + tolerance
 ```
+
+The selected rank is found with binary search because SVD reconstruction error does not increase as rank grows.
 
 The tolerance is `1e-12`, only to avoid floating-point boundary misses.
 
@@ -228,6 +234,15 @@ Outputs:
 - `outputs/embedding_svd_error/plots/svd_error_targets_k.png`
 - `outputs/embedding_svd_error/plots/decode/`
 - `outputs/embedding_svd_error/plots/display/`
+
+Aggregate rows/points are grouped by:
+
+```text
+order + variant + epsilon
+```
+
+With 2 orders, 3 variants, and 10 epsilons, the aggregate plot has up to 60 points.
+The segment CSV has many more rows because it also includes every inter-I segment.
 
 ### Embedding Quantization
 
@@ -264,3 +279,37 @@ Outputs:
 - `outputs/quantization/quantization_results.csv`
 - `outputs/quantization/quantization_metadata.json`
 - `outputs/quantization/plots/quantization_comparison.png`
+
+### Retrieval
+
+Uses existing frame embeddings and SVD target-error outputs.
+
+This stage selects fixed query frames, builds an exact cosine FAISS baseline over original embeddings, reconstructs one SVD database per order/variant/epsilon, and measures recall@k against the original top-k neighbors.
+
+It also evaluates PQ and RaBitQ on the original full embedding database using the same query ids and reference neighbors. PQ/RaBitQ do not use the SVD segment variants.
+
+Self-matches are excluded. Adjacent-delta SVD reconstruction is decoded sequentially from the previous reconstructed frame.
+
+Retrieval rows:
+
+```text
+retrieval_results.csv: one summary row per SVD group, PQ config, or RaBitQ config
+reference_neighbors.csv: original top-k neighbors for each query
+compressed_neighbors.csv: compressed top-k neighbors for each query and method/config
+```
+
+For SVD:
+
+```text
+group = order + variant + epsilon
+compressed_neighbors rows = groups * query_count * top_k
+```
+
+Outputs:
+
+- `outputs/retrieval/retrieval_results.csv`
+- `outputs/retrieval/query_ids.csv`
+- `outputs/retrieval/reference_neighbors.csv`
+- `outputs/retrieval/compressed_neighbors.csv`
+- `outputs/retrieval/retrieval_metadata.json`
+- `outputs/retrieval/plots/compression_vs_recall.png`

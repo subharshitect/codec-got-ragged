@@ -12,18 +12,16 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.append(str(Path(__file__).resolve().parent))
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from embedding_svd import (
-    build_matrices,
-    format_float,
-    inter_i_segments,
-    load_embedding_index,
-    number,
-    read_csv,
-    write_csv,
-)
+from common.embedding_data import load_embedding_inputs
 from common.progress import tqdm
+from common.svd_helpers import (
+    build_matrices,
+    compression_params,
+    inter_i_segments,
+    relative_error_at_rank,
+)
+from common.tabular import format_float, number, write_csv
 
 
 EPSILON_TOLERANCE = 1e-12
@@ -80,20 +78,6 @@ def parse_epsilons(value: str) -> list[float]:
     return sorted(set(epsilons))
 
 
-def relative_error_at_rank(
-    matrix: np.ndarray,
-    u_matrix: np.ndarray,
-    singular_values: np.ndarray,
-    vt_matrix: np.ndarray,
-    rank: int,
-    frobenius_norm: float,
-) -> float:
-    reconstructed = (u_matrix[:, :rank] * singular_values[:rank]) @ vt_matrix[:rank, :]
-    # Equivalent SVD shortcut:
-    # sqrt(sum(S[k:]^2) / sum(S^2))
-    return float(np.linalg.norm(matrix - reconstructed, ord="fro") / frobenius_norm)
-
-
 def selected_rank_for_epsilon(
     matrix: np.ndarray,
     u_matrix: np.ndarray,
@@ -102,16 +86,27 @@ def selected_rank_for_epsilon(
     frobenius_norm: float,
     epsilon: float,
 ) -> tuple[int | None, float | None]:
+    """Choose the smallest k meeting epsilon using monotone reconstruction error."""
     if frobenius_norm == 0:
         return None, None
 
     max_rank = len(singular_values)
-    for rank in range(1, max_rank + 1):
+    selected_rank = None
+    selected_error = None
+    low = 1
+    high = max_rank
+
+    while low <= high:
+        rank = (low + high) // 2
         error = relative_error_at_rank(matrix, u_matrix, singular_values, vt_matrix, rank, frobenius_norm)
         if error <= epsilon + EPSILON_TOLERANCE:
-            return rank, error
+            selected_rank = rank
+            selected_error = error
+            high = rank - 1
+        else:
+            low = rank + 1
 
-    return None, None
+    return selected_rank, selected_error
 
 
 def rows_for_matrix(
@@ -142,8 +137,11 @@ def rows_for_matrix(
             frobenius_norm,
             epsilon,
         )
-        svd_params = selected_k * (n_frames + d_model + 1) if selected_k is not None else None
-        compression_ratio = original_params / svd_params if svd_params else None
+        if selected_k is None:
+            svd_params = None
+            compression_ratio = None
+        else:
+            _, svd_params, compression_ratio = compression_params(n_frames, d_model, selected_k)
 
         output.append(
             {
@@ -225,23 +223,7 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not frames_path.exists():
-        raise SystemExit(f"Missing frames file: {frames_path}")
-    if not embeddings_path.exists():
-        raise SystemExit(f"Missing embeddings file: {embeddings_path}")
-    if not index_path.exists():
-        raise SystemExit(f"Missing embedding index file: {index_path}")
-
-    frames = read_csv(frames_path)
-    embedding_index = load_embedding_index(index_path)
-    embeddings = np.load(embeddings_path)
-
-    if embeddings.ndim != 2:
-        raise SystemExit(f"Expected a 2D embedding array, got shape {embeddings.shape}")
-
-    missing = [row["frame_id"] for row in frames if row["frame_id"] not in embedding_index]
-    if missing:
-        raise SystemExit(f"Missing embedding for frame: {missing[0]}")
+    frames, embeddings, embedding_index = load_embedding_inputs(frames_path, embeddings_path, index_path)
 
     segment_rows = []
     segment_counts = {}
@@ -255,8 +237,9 @@ def main() -> None:
         segment_counts[order_name] = len(segments)
         for segment in tqdm(segments, desc=f"{order_name} SVD error targets", unit="segment"):
             matrix_rows: list[dict[str, str]] = []
-            for variant, matrix in build_matrices(order_name, segment, embeddings, embedding_index, matrix_rows):
-                segment_rows.extend(rows_for_matrix(order_name, segment, variant, matrix, args.epsilons))
+            variant_matrices: list[tuple[str, np.ndarray]] = build_matrices(order_name, segment, embeddings, embedding_index, matrix_rows)
+            for variant, matrix in variant_matrices:
+                segment_rows.extend(rows_for_matrix(order_name, segment, variant, matrix, args.epsilons)) # svd etc. here
 
     aggregate = aggregate_rows(segment_rows)
 
@@ -265,7 +248,7 @@ def main() -> None:
 
     metadata = {
         "epsilons": args.epsilons,
-        "selection_rule": "For each epsilon, choose the smallest k where ||X - X_k||_F / ||X||_F <= epsilon + tolerance.",
+        "selection_rule": "For each epsilon, binary search for the smallest k where ||X - X_k||_F / ||X||_F <= epsilon + tolerance.",
         "epsilon_tolerance": EPSILON_TOLERANCE,
         "equivalent_error_shortcut": "sqrt(sum(S[k:]^2) / sum(S^2))",
         "compression_ratio": "N_i * d_model / (k * (N_i + d_model + 1)) using the selected k.",
@@ -284,4 +267,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # from pdb import set_trace; set_trace()
     main()

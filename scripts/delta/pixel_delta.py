@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -15,6 +13,7 @@ from PIL import Image
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.progress import tqdm
+from common.tabular import add_ranks, ordered_rows, read_csv, write_csv
 
 
 DELTA_FIELDS = [
@@ -37,29 +36,6 @@ DELTA_FIELDS = [
     "delta_rank",
 ]
 
-
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
-
-def write_csv(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in fields})
-
-
 def read_image(path: Path) -> np.ndarray:
     with Image.open(path) as image:
         return np.asarray(image.convert("RGB"), dtype=np.uint8)
@@ -73,29 +49,6 @@ def pixel_delta(current_path: Path, previous_path: Path) -> float:
 
     diff = np.abs(current.astype(np.int16) - previous.astype(np.int16))
     return float(diff.mean())
-
-
-def ordered_rows(rows: list[dict[str, str]], order_column: str) -> list[dict[str, str]]:
-    return sorted(
-        rows,
-        key=lambda row: (
-            number(row.get(order_column)) is None,
-            number(row.get(order_column)) if number(row.get(order_column)) is not None else math.inf,
-            number(row.get("source_index")) or 0,
-        ),
-    )
-
-
-def add_ranks(rows: list[dict[str, str]]) -> None:
-    ranked = [
-        (index, number(row.get("pixel_delta_mean_abs")))
-        for index, row in enumerate(rows)
-        if number(row.get("pixel_delta_mean_abs")) is not None
-    ]
-    ranked.sort(key=lambda item: item[1], reverse=True)
-    for rank, (index, _) in enumerate(ranked, start=1):
-        rows[index]["delta_rank"] = str(rank)
-
 
 def compute_order_deltas(
     rows: list[dict[str, str]],
@@ -136,7 +89,7 @@ def compute_order_deltas(
         )
         previous = row
 
-    add_ranks(output)
+    add_ranks(output, "pixel_delta_mean_abs", "delta_rank")
     return output
 
 

@@ -377,3 +377,45 @@ Outputs:
 - `quantization_results.csv`
 - `quantization_metadata.json`
 - `plots/quantization_comparison.png`
+
+## Retrieval
+
+`make retrieval` measures how well compressed embeddings preserve nearest-neighbor search results. `#we_invented`
+
+Reference:
+
+```text
+FAISS IndexFlatIP over L2-normalized original embeddings
+```
+
+Because vectors are normalized, inner product is cosine similarity.
+The query frame itself is excluded from the top-k neighbors. `#we_invented`
+
+SVD retrieval:
+
+```text
+one reconstructed database = order + variant + epsilon
+```
+
+The SVD variants are:
+
+- `embedding_frames`
+- `embedding_delta_previous_i`
+- `embedding_delta_adjacent`
+
+`embedding_delta_adjacent` is reconstructed sequentially from the previous reconstructed frame.
+
+PQ/RaBitQ retrieval:
+
+- uses the full embedding database `[num_frames, d_model]`
+- uses the same query ids and reference neighbors
+- does not use SVD segment matrices
+
+Outputs:
+
+- `retrieval_results.csv`: one summary row per SVD group, PQ config, or RaBitQ config.
+- `query_ids.csv`: sampled query frames.
+- `reference_neighbors.csv`: original top-k neighbors.
+- `compressed_neighbors.csv`: compressed top-k neighbors for each query and method/config.
+- `retrieval_metadata.json`: run settings.
+- `plots/compression_vs_recall.png`: compression ratio vs recall@k.

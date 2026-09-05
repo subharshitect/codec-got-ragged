@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.plot_format import apply_three_decimal_ticks
 from common.progress import tqdm
+from common.tabular import number, read_csv
 
 
 VARIANT_TITLES = {
@@ -20,21 +20,6 @@ VARIANT_TITLES = {
 }
 ORDERS = ["decode", "display"]
 VARIANTS = ["embedding_frames", "embedding_delta_previous_i", "embedding_delta_adjacent"]
-
-
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
 
 def draw_panel(
     ax,

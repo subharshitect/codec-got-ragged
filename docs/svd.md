@@ -87,9 +87,9 @@ e.g.
 
 For each target error epsilon:
 
-    try k = 1, 2, ..., min(N_i, d_model)
+    binary search k in [1, min(N_i, d_model)]
     compute relative_error(k) = ||X - X_k||_F / ||X||_F
-    pick the first k where relative_error(k) <= epsilon + tolerance
+    pick the smallest k where relative_error(k) <= epsilon + tolerance
 
 Tolerance is 1e-12, only to avoid floating-point boundary misses.
 
@@ -146,7 +146,7 @@ For each segment matrix X:
 
  # [NOTE]: binary search!
   For each epsilon:
-    try k = 1, 2, ..., min(N_i, d_model)
+    binary search k in [1, min(N_i, d_model)]
     compute relative_error(k) #two ways although same: sqrt(sum(S[k:]^2) / sum(S^2)) && ||X - X_k||_F / ||X||_F
     pick smallest k where relative_error(k) <= epsilon
 

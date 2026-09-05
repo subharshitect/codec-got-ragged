@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 from pathlib import Path
@@ -16,6 +15,7 @@ from transformers import CLIPModel, CLIPProcessor
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.progress import tqdm
+from common.tabular import read_csv, write_csv
 
 
 INDEX_FIELDS = [
@@ -28,20 +28,6 @@ INDEX_FIELDS = [
     "key_frame",
     "frame_image",
 ]
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
-
-def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=INDEX_FIELDS)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in INDEX_FIELDS})
-
 
 def choose_device(value: str) -> str:
     if value != "auto":
@@ -114,7 +100,7 @@ def main() -> None:
                 "frame_image": row.get("frame_image", ""),
             }
         )
-    write_csv(out_dir / "frame_embeddings.csv", index_rows)
+    write_csv(out_dir / "frame_embeddings.csv", index_rows, INDEX_FIELDS)
 
     metadata = {
         "model": args.model,

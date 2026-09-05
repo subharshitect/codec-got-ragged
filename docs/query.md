@@ -35,17 +35,21 @@ Shape:
 
 ## 3. Uncompressed Baseline
 
-Build a FAISS index over the original embeddings:
+Build a FAISS index over L2-normalized original embeddings:
 
 ```text
-index(X)
+IndexFlatIP(normalize(X))
 ```
 
 Query it with:
 
 ```text
-queries
+normalize(queries)
 ```
+
+This is cosine-similarity search.
+
+The query frame itself is removed from its own neighbor list before recall is computed.
 
 FAISS returns:
 
@@ -55,6 +59,9 @@ topk_scores  = [query_count, top_k]
 ```
 
 This is the reference retrieval result.
+
+`QUERY_COUNT` controls how many query embeddings are sampled.
+`QUERY_K` controls how many non-self neighbors are kept per query.
 
 ## 4. Our SVD Compression
 
@@ -103,7 +110,25 @@ Then reconstruct:
 X_k = U[:, :k] @ diag(S[:k]) @ Vt[:k, :]
 ```
 
-Place reconstructed segment rows back into their original frame positions.
+Convert reconstructed rows back to frame embeddings:
+
+```text
+embedding_frames:
+  approx e(current) = reconstructed row
+
+embedding_delta_previous_i:
+  approx e(current) = e(previous I-frame) - reconstructed_delta
+
+embedding_delta_adjacent:
+  approx e(B1) = e(I0) - d1
+  approx e(P2) = approx e(B1) - d2
+  approx e(B3) = approx e(P2) - d3
+```
+
+For adjacent deltas, reconstruction is sequential. It does not use original intermediate B/P embeddings as anchors.
+
+Place reconstructed frame embeddings back into their original frame positions.
+I-frames and any frames outside valid inter-I segments remain as original embeddings.
 
 This produces:
 
@@ -113,16 +138,16 @@ X_reconstructed = [video_len, d_model]
 
 ## 5. Compressed Retrieval
 
-Build a FAISS index over:
+Build a cosine FAISS index over:
 
 ```text
-X_reconstructed
+normalize(X_reconstructed)
 ```
 
 Query it using the same:
 
 ```text
-queries
+normalize(queries)
 ```
 
 Get:
@@ -150,7 +175,7 @@ overlap = 7
 recall@10 = 7 / 10 = 0.7
 ```
 
-## 7. Baselines
+## 7. PQ / RaBitQ Baselines
 
 Run the same retrieval evaluation for:
 
@@ -159,12 +184,29 @@ PQ
 RaBitQ
 ```
 
-Use the same:
+They use the same:
 
 ```text
 query_ids
 top_k
 uncompressed_topk reference
+```
+
+They operate on the original full embedding database:
+
+```text
+X = [video_len, d_model]
+```
+
+They do not use the SVD segment variants.
+
+PQ/RaBitQ are evaluated as global vector-quantization baselines.
+They are not segment-matrix experiments.
+
+PQ is skipped if the video has fewer training vectors than the number of PQ centroids:
+
+```text
+n_vectors < 2^nbits
 ```
 
 ## 8. Main Plot
@@ -182,4 +224,23 @@ SVD embedding_delta_previous_i
 SVD embedding_delta_adjacent
 PQ
 RaBitQ
+```
+
+SVD output grouping:
+
+```text
+one reconstructed database = one order + one variant + one epsilon
+```
+
+So with:
+
+```text
+2 orders * 3 variants * 10 epsilons
+```
+
+the aggregate SVD retrieval side has up to 60 result rows.
+`compressed_neighbors.csv` is larger because it stores every retrieved neighbor:
+
+```text
+groups * query_count * top_k
 ```

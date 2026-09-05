@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from common.plot_format import annotate_first_last_frame, apply_three_decimal_ticks
 from common.progress import tqdm
+from common.tabular import number, read_csv
 
 
 COLORS = {
@@ -18,21 +18,6 @@ COLORS = {
     "P": "#1f77b4",
     "B": "#2ca02c",
 }
-
-
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
 
 def draw_score_panel(ax, rows: list[dict[str, str]], x_values: list[float | None], column: str, label: str) -> None:
     y_values = [number(row.get(column)) for row in rows]

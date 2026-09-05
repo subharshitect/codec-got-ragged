@@ -4,16 +4,17 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
-import math
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+from common.embedding_data import load_embedding_inputs
 from common.progress import tqdm
+from common.svd_helpers import cosine_similarity
+from common.tabular import add_ranks, ordered_rows, write_csv
 
 
 FIELDS = [
@@ -35,57 +36,6 @@ FIELDS = [
     "previous_adjacent_cosine_similarity",
     "previous_adjacent_rank",
 ]
-
-
-def number(value: object) -> float | None:
-    if value in (None, "", "N/A"):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
-
-
-def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS)
-        writer.writeheader()
-        for row in tqdm(rows, desc=f"write {path.name}", unit="row"):
-            writer.writerow({field: row.get(field, "") for field in FIELDS})
-
-
-def ordered_rows(rows: list[dict[str, str]], order_column: str) -> list[dict[str, str]]:
-    return sorted(
-        rows,
-        key=lambda row: (
-            number(row.get(order_column)) is None,
-            number(row.get(order_column)) if number(row.get(order_column)) is not None else math.inf,
-            number(row.get("source_index")) or 0,
-        ),
-    )
-
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float | None:
-    denominator = float(np.linalg.norm(a) * np.linalg.norm(b))
-    if denominator == 0:
-        return None
-    return float(np.dot(a, b) / denominator)
-
-
-def add_ranks(rows: list[dict[str, str]], value_column: str, rank_column: str) -> None:
-    ranked = [
-        (index, number(row.get(value_column)))
-        for index, row in enumerate(rows)
-        if number(row.get(value_column)) is not None
-    ]
-    ranked.sort(key=lambda item: item[1], reverse=True)
-    for rank, (index, _) in enumerate(ranked, start=1):
-        rows[index][rank_column] = str(rank)
 
 
 def compute_order(
@@ -165,27 +115,13 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if not frames_path.exists():
-        raise SystemExit(f"Missing frames file: {frames_path}")
-    if not embeddings_path.exists():
-        raise SystemExit(f"Missing embeddings file: {embeddings_path}")
-    if not index_path.exists():
-        raise SystemExit(f"Missing embedding index file: {index_path}")
-
-    rows = read_csv(frames_path)
-    index_rows = read_csv(index_path)
-    embedding_index = {row["frame_id"]: int(row["embedding_index"]) for row in index_rows}
-    embeddings = np.load(embeddings_path)
-
-    missing = [row["frame_id"] for row in rows if row["frame_id"] not in embedding_index]
-    if missing:
-        raise SystemExit(f"Missing embedding for frame: {missing[0]}")
+    rows, embeddings, embedding_index = load_embedding_inputs(frames_path, embeddings_path, index_path)
 
     decode_rows = compute_order(rows, embeddings, embedding_index, "decode", "decode_order_index", "decode_time_seconds")
     display_rows = compute_order(rows, embeddings, embedding_index, "display", "display_order_index", "display_time_seconds")
 
-    write_csv(out_dir / "decode_order_embedding_frame_similarities.csv", decode_rows)
-    write_csv(out_dir / "display_order_embedding_frame_similarities.csv", display_rows)
+    write_csv(out_dir / "decode_order_embedding_frame_similarities.csv", decode_rows, FIELDS)
+    write_csv(out_dir / "display_order_embedding_frame_similarities.csv", display_rows, FIELDS)
 
     metadata = {
         "similarity": "cosine similarity between two frame embeddings",
